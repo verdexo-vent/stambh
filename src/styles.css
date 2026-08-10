@@ -126,10 +126,26 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .project-visual { display: grid; gap: 14px; margin: 28px 0 18px; }
 .project-visual span { position: relative; padding-top: 8px; border-top: 2px solid rgba(255,255,255,.12); color: var(--muted); font: 8px/1 "Space Mono", monospace; text-transform: uppercase; }
 .project-visual i { position: absolute; height: 2px; left: 0; top: -2px; background: var(--signal); }
-.home-visual, .travel-visual { display: flex; align-items: center; gap: 7px; margin-top: auto; color: var(--muted); font: 8px/1 "Space Mono", monospace; }
-.home-visual i, .travel-visual i { flex: 1; height: 1px; background: var(--line); }
-.security { background: #20211e; }.security-visual { position: absolute; right: 15px; bottom: 13px; display: flex; align-items: center; gap: 7px; color: var(--signal); }.security-visual span { color: var(--muted); font: 8px/1.6 "Space Mono", monospace; }
-.travel { background: #25231f; }.travel-visual span:first-child { color: var(--paper); }
+.home { background: #181916; }
+.home-visual { order: 2; display: grid; grid-template-columns: repeat(3, 1fr); margin: 25px 0 18px; border: 1px solid var(--line); }
+.home-visual > span { min-height: 67px; padding: 11px; display: flex; flex-direction: column; justify-content: space-between; border-right: 1px solid var(--line); }
+.home-visual > span:last-child { border-right: 0; }
+.home-visual small { color: var(--muted); font: 8px/1 "Space Mono", monospace; text-transform: uppercase; }
+.home-visual strong { font-size: 19px; font-weight: 500; }
+.security { background: #1d1e1b; }
+.security-visual { order: 2; margin: 20px 0 16px; display: grid; grid-template-columns: 1.4fr 1fr 1fr; min-height: 70px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.security-visual > div, .security-visual > span { padding: 10px; display: flex; flex-direction: column; justify-content: space-between; border-right: 1px solid var(--line); }
+.security-visual > span:last-child { border-right: 0; }
+.security-visual > div { color: var(--signal); }.security-visual > div strong { color: var(--paper); font-size: 11px; font-weight: 500; }
+.security-visual > span { position: relative; color: var(--muted); font: 8px/1 "Space Mono", monospace; }
+.security-visual > span i { width: 5px; height: 5px; border-radius: 50%; background: #8ed56c; }
+.security-visual > span small { color: var(--paper); font-size: 9px; }
+.travel { background: #201f1b; }
+.travel-visual { order: 2; margin: 24px 0 15px; }
+.travel-visual > div { display: flex; align-items: center; gap: 9px; color: var(--paper); font: 9px/1 "Space Mono", monospace; }
+.travel-visual > div i { flex: 1; height: 1px; background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 8px); opacity: .45; }
+.travel-visual > p { margin: 16px 0 0; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; color: var(--muted); font: 8px/1 "Space Mono", monospace; }
+.travel-visual > p strong { color: var(--paper); font-size: 9px; font-weight: 400; }
 .sector-arrow { position: absolute; right: 17px; bottom: 17px; opacity: 0; transform: translateX(-6px); transition: opacity .2s ease, transform .2s ease; }
 .sector-widget:hover .sector-arrow { opacity: 1; transform: translateX(0); }
 

@@ -1,5 +1,8 @@
 import express from "express";
+import { existsSync } from "node:fs";
 import { z } from "zod";
+
+if (existsSync(".env")) process.loadEnvFile(".env");
 
 const app = express();
 const port = Number(process.env.PORT ?? 4174);
@@ -55,7 +58,10 @@ app.post("/api/chat", async (request, response) => {
 
     const payload = await modelResponse.json() as {
       success?: boolean;
-      result?: { response?: string };
+      result?: {
+        response?: string;
+        choices?: Array<{ message?: { content?: string | null } }>;
+      };
       errors?: Array<{ message: string }>;
     };
 
@@ -64,7 +70,8 @@ app.post("/api/chat", async (request, response) => {
       return response.status(502).json({ error: message });
     }
 
-    return response.json({ reply: payload.result?.response ?? "I completed the request but received no text response." });
+    const reply = payload.result?.response ?? payload.result?.choices?.[0]?.message?.content;
+    return response.json({ reply: reply ?? "I completed the request but received no text response." });
   } catch (error) {
     console.error("Stambh provider error", error);
     return response.status(502).json({ error: "The model provider is temporarily unavailable" });

@@ -109,8 +109,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .sector-widget:hover { transform: translateY(-3px); border-color: rgba(241,239,232,.38); }
 .sector-widget.inbox { grid-column: span 3; grid-row: span 2; background: var(--signal); color: var(--ink); border-color: transparent; }
 .sector-widget.knowledge { grid-column: span 3; grid-row: span 2; background: var(--paper); color: var(--ink); }
-.sector-widget.projects { grid-column: span 3; grid-row: span 3; }
-.sector-widget.home, .sector-widget.security, .sector-widget.travel { grid-column: span 3; }
+.sector-widget.projects { grid-column: span 6; grid-row: span 2; }
+.sector-widget.home, .sector-widget.security, .sector-widget.travel { grid-column: span 4; grid-row: span 2; }
 .sector-top { display: flex; align-items: center; justify-content: space-between; }
 .sector-top > span { display: flex; align-items: center; gap: 7px; font: 700 9px/1 "Space Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
 .sector-top > small { margin: 0; font: 8px/1 "Space Mono", monospace; opacity: .46; text-transform: uppercase; }

@@ -2,18 +2,24 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowRight,
+  BookOpenText,
   BellSimple,
   CalendarBlank,
   Check,
   Command,
   CurrencyInr,
+  EnvelopeSimple,
   Heartbeat,
+  HouseLine,
   ListChecks,
   LockSimple,
   Microphone,
   PaperPlaneTilt,
   Pulse,
+  ShieldCheck,
   Sparkle,
+  SuitcaseRolling,
+  TrendUp,
   UsersThree,
   X
 } from "@phosphor-icons/react";
@@ -38,6 +44,15 @@ const signals = [
   { label: "Focus", value: "3.4h", delta: "peak 2pm", icon: Pulse },
   { label: "Runway", value: "8.2m", delta: "stable", icon: CurrencyInr },
   { label: "People", value: "5", delta: "to follow up", icon: UsersThree }
+];
+
+const lifeSectors = [
+  { name: "Communication", metric: "4 important", note: "12 waiting · 2 drafted", icon: EnvelopeSimple, tone: "signal" },
+  { name: "Knowledge", metric: "18 captured", note: "3 ideas resurfaced", icon: BookOpenText, tone: "paper" },
+  { name: "Projects", metric: "3 active", note: "Stambh is on track", icon: TrendUp, tone: "dark" },
+  { name: "Home", metric: "All clear", note: "1 reminder tomorrow", icon: HouseLine, tone: "dark" },
+  { name: "Security", metric: "Protected", note: "No unusual activity", icon: ShieldCheck, tone: "paper" },
+  { name: "Travel", metric: "No plans", note: "Passport valid · 2029", icon: SuitcaseRolling, tone: "signal" }
 ];
 
 export function App() {
@@ -191,6 +206,26 @@ export function App() {
           <p>One decision from your product review and one personal follow-up.</p>
           <button className="text-action" onClick={openChat}>Resolve with Stambh <ArrowRight size={17} /></button>
         </article>
+      </section>
+
+      <section className="life-map" aria-labelledby="life-map-title">
+        <div className="life-map-intro">
+          <span className="map-number">03</span>
+          <div>
+            <h2 id="life-map-title">The rest of your life,<br /><em>still in view.</em></h2>
+            <p>Quiet sectors stay quiet. Stambh brings them forward only when something changes.</p>
+          </div>
+          <button onClick={() => setCommandOpen(true)}>Configure sectors <ArrowRight size={17} /></button>
+        </div>
+        <div className="sector-rail">
+          {lifeSectors.map(({ name, metric, note, icon: Icon, tone }, index) => (
+            <button className={`sector-tile ${tone}`} key={name} onClick={() => { setChatOpen(true); setInput(`Give me a briefing for ${name.toLowerCase()}`); }}>
+              <div className="sector-top"><span>0{index + 1}</span><Icon size={20} /></div>
+              <div><small>{name}</small><strong>{metric}</strong><p>{note}</p></div>
+              <ArrowRight className="sector-arrow" size={18} />
+            </button>
+          ))}
+        </div>
       </section>
 
       <footer className="footer-strip">

@@ -19,13 +19,12 @@ export function StambhCore({ active, onActivate }: StambhCoreProps) {
         transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
       />
       <motion.span
-        className="core-shell"
+        className="core-artifact"
         animate={{ scale: active ? [1, 1.035, 1] : [1, 1.012, 1] }}
         transition={{ duration: active ? 1.6 : 4.5, repeat: Infinity, ease: "easeInOut" }}
       >
-        <span className="core-eye">
-          <span className="core-pupil" />
-        </span>
+        <img src="/assets/stambh-core-v2.webp" alt="" />
+        <span className="core-breath" />
       </motion.span>
       <span className="core-caption">
         <strong>STAMBH</strong>

@@ -47,12 +47,12 @@ const signals = [
 ];
 
 const lifeSectors = [
-  { name: "Communication", metric: "4 important", note: "12 waiting · 2 drafted", icon: EnvelopeSimple, tone: "signal" },
-  { name: "Knowledge", metric: "18 captured", note: "3 ideas resurfaced", icon: BookOpenText, tone: "paper" },
-  { name: "Projects", metric: "3 active", note: "Stambh is on track", icon: TrendUp, tone: "dark" },
-  { name: "Home", metric: "All clear", note: "1 reminder tomorrow", icon: HouseLine, tone: "dark" },
-  { name: "Security", metric: "Protected", note: "No unusual activity", icon: ShieldCheck, tone: "paper" },
-  { name: "Travel", metric: "No plans", note: "Passport valid · 2029", icon: SuitcaseRolling, tone: "signal" }
+  { name: "Communication", metric: "4 important", note: "12 waiting · 2 drafted", icon: EnvelopeSimple, kind: "inbox" },
+  { name: "Knowledge", metric: "18 captured", note: "3 ideas resurfaced", icon: BookOpenText, kind: "knowledge" },
+  { name: "Projects", metric: "3 active", note: "Stambh beta leads today", icon: TrendUp, kind: "projects" },
+  { name: "Home", metric: "All clear", note: "1 reminder tomorrow", icon: HouseLine, kind: "home" },
+  { name: "Security", metric: "Protected", note: "Last scan · 2 min ago", icon: ShieldCheck, kind: "security" },
+  { name: "Travel", metric: "No plans", note: "Passport valid · 2029", icon: SuitcaseRolling, kind: "travel" }
 ];
 
 export function App() {
@@ -209,19 +209,21 @@ export function App() {
       </section>
 
       <section className="life-map" aria-labelledby="life-map-title">
-        <div className="life-map-intro">
-          <span className="map-number">03</span>
-          <div>
-            <h2 id="life-map-title">The rest of your life,<br /><em>still in view.</em></h2>
-            <p>Quiet sectors stay quiet. Stambh brings them forward only when something changes.</p>
-          </div>
-          <button onClick={() => setCommandOpen(true)}>Configure sectors <ArrowRight size={17} /></button>
+        <div className="sector-toolbar">
+          <div><span className="online-dot" /><strong id="life-map-title">Sectors</strong><small>{lifeSectors.length} active</small></div>
+          <button onClick={() => setCommandOpen(true)}>Edit layout <ArrowRight size={15} /></button>
         </div>
-        <div className="sector-rail">
-          {lifeSectors.map(({ name, metric, note, icon: Icon, tone }, index) => (
-            <button className={`sector-tile ${tone}`} key={name} onClick={() => { setChatOpen(true); setInput(`Give me a briefing for ${name.toLowerCase()}`); }}>
-              <div className="sector-top"><span>0{index + 1}</span><Icon size={20} /></div>
-              <div><small>{name}</small><strong>{metric}</strong><p>{note}</p></div>
+        <div className="sector-board">
+          {lifeSectors.map(({ name, metric, note, icon: Icon, kind }) => (
+            <button className={`sector-widget ${kind}`} key={name} onClick={() => { setChatOpen(true); setInput(`Give me a briefing for ${name.toLowerCase()}`); }}>
+              <div className="sector-top"><span><Icon size={17} />{name}</span><small>Open</small></div>
+              <div className="sector-summary"><strong>{metric}</strong><p>{note}</p></div>
+              {kind === "inbox" && <div className="inbox-visual"><i /><i /><i /><span>+9</span></div>}
+              {kind === "knowledge" && <div className="knowledge-visual"><small>RESURFACED</small><p>“Build memory around decisions, not documents.”</p></div>}
+              {kind === "projects" && <div className="project-visual"><span><i style={{ width: "76%" }} />Stambh</span><span><i style={{ width: "48%" }} />Verdexo</span><span><i style={{ width: "22%" }} />Personal OS</span></div>}
+              {kind === "home" && <div className="home-visual"><span>NOW</span><i /><span>18:00</span><i /><span>TOMORROW</span></div>}
+              {kind === "security" && <div className="security-visual"><ShieldCheck size={48} weight="thin" /><span>Devices 03<br />Alerts 00</span></div>}
+              {kind === "travel" && <div className="travel-visual"><span>DEL</span><i /><span>—</span><i /><span>OPEN</span></div>}
               <ArrowRight className="sector-arrow" size={18} />
             </button>
           ))}

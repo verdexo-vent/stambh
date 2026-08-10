@@ -10,15 +10,12 @@ import {
   CurrencyInr,
   EnvelopeSimple,
   Heartbeat,
-  HouseLine,
   ListChecks,
   LockSimple,
   Microphone,
   PaperPlaneTilt,
   Pulse,
-  ShieldCheck,
   Sparkle,
-  SuitcaseRolling,
   TrendUp,
   UsersThree,
   X
@@ -49,10 +46,7 @@ const signals = [
 const lifeSectors = [
   { name: "Communication", metric: "4 important", note: "12 waiting · 2 drafted", icon: EnvelopeSimple, kind: "inbox" },
   { name: "Knowledge", metric: "18 captured", note: "3 ideas resurfaced", icon: BookOpenText, kind: "knowledge" },
-  { name: "Projects", metric: "3 active", note: "Stambh beta leads today", icon: TrendUp, kind: "projects" },
-  { name: "Home", metric: "All clear", note: "Everything is in its normal range", icon: HouseLine, kind: "home" },
-  { name: "Security", metric: "No alerts", note: "Last review · 2 min ago", icon: ShieldCheck, kind: "security" },
-  { name: "Travel", metric: "Ready", note: "No upcoming journeys", icon: SuitcaseRolling, kind: "travel" }
+  { name: "Projects", metric: "3 active", note: "Stambh beta leads today", icon: TrendUp, kind: "projects" }
 ];
 
 export function App() {
@@ -221,9 +215,6 @@ export function App() {
               {kind === "inbox" && <div className="inbox-visual"><i /><i /><i /><span>+9</span></div>}
               {kind === "knowledge" && <div className="knowledge-visual"><small>RESURFACED</small><p>“Build memory around decisions, not documents.”</p></div>}
               {kind === "projects" && <div className="project-visual"><span><i style={{ width: "76%" }} />Stambh</span><span><i style={{ width: "48%" }} />Verdexo</span><span><i style={{ width: "22%" }} />Personal OS</span></div>}
-              {kind === "home" && <div className="home-visual"><span><small>Climate</small><strong>23°</strong></span><span><small>Devices</small><strong>06</strong></span><span><small>Due</small><strong>01</strong></span></div>}
-              {kind === "security" && <div className="security-visual"><div><ShieldCheck size={28} weight="light" /><strong>Protected</strong></div><span><i />Identity<small>Clear</small></span><span><i />Devices<small>3 trusted</small></span></div>}
-              {kind === "travel" && <div className="travel-visual"><div><span>DEL</span><i /><SuitcaseRolling size={16} /><i /><span>OPEN</span></div><p><span>Passport</span><strong>Valid through 2029</strong></p></div>}
               <ArrowRight className="sector-arrow" size={18} />
             </button>
           ))}

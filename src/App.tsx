@@ -33,12 +33,8 @@ type SystemStatus = {
   access: string;
   connectors: number;
 };
-
-const agenda = [
-  { time: "10:30", title: "Product review", meta: "Verdexo · 45 min" },
-  { time: "13:00", title: "Deep work block", meta: "Stambh prototype" },
-  { time: "17:30", title: "Strength training", meta: "Upper body" }
-];
+type CalendarStatus = { configured: boolean; connected: boolean; access: "read-only" };
+type CalendarEvent = { id: string; title: string; start?: string; end?: string; allDay: boolean; location?: string };
 
 const priorities = [
   { title: "Ship Stambh beta", detail: "Interface, secure model bridge, docs", done: false },
@@ -66,6 +62,8 @@ export function App() {
   const [controlOpen, setControlOpen] = useState(false);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [systemBusy, setSystemBusy] = useState(false);
+  const [calendarStatus, setCalendarStatus] = useState<CalendarStatus | null>(null);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -87,6 +85,20 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  async function refreshCalendar() {
+    try {
+      const statusResponse = await fetch("/api/calendar/status", { cache: "no-store" });
+      const status = await statusResponse.json() as CalendarStatus;
+      setCalendarStatus(status);
+      if (status.connected) {
+        const eventsResponse = await fetch("/api/calendar/events", { cache: "no-store" });
+        if (eventsResponse.ok) setCalendarEvents(((await eventsResponse.json()) as { events: CalendarEvent[] }).events);
+      }
+    } catch { setCalendarStatus(null); }
+  }
+
+  useEffect(() => { void refreshCalendar(); }, []);
 
   async function refreshSystem() {
     setSystemBusy(true);
@@ -176,13 +188,15 @@ export function App() {
         <article className="panel agenda-panel">
           <div className="panel-head">
             <span><CalendarBlank size={18} /> Today</span>
-            <button>View calendar</button>
+            <button onClick={() => calendarStatus?.connected ? void refreshCalendar() : window.location.assign("/api/calendar/connect")}>{calendarStatus?.connected ? "Refresh" : "Connect"}</button>
           </div>
           <div className="agenda-list">
-            {agenda.map((item, index) => (
-              <div className={`agenda-item ${index === 1 ? "accent" : ""}`} key={item.time}>
-                <time>{item.time}</time>
-                <div><strong>{item.title}</strong><span>{item.meta}</span></div>
+            {calendarStatus?.connected && calendarEvents.length === 0 && <div className="agenda-item"><time>—</time><div><strong>No events today</strong><span>Your calendar is clear.</span></div></div>}
+            {!calendarStatus?.connected && <div className="agenda-item"><time>—</time><div><strong>Calendar not connected</strong><span>Read-only access; Stambh cannot edit events.</span></div></div>}
+            {calendarEvents.map((item, index) => (
+              <div className={`agenda-item ${index === 1 ? "accent" : ""}`} key={item.id}>
+                <time>{item.allDay ? "ALL DAY" : item.start ? new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(item.start)) : "—"}</time>
+                <div><strong>{item.title}</strong><span>{item.location ?? "Google Calendar"}</span></div>
               </div>
             ))}
           </div>
@@ -272,8 +286,8 @@ export function App() {
                 <div className="control-cell"><small>Access</small><strong>{systemStatus?.access === "tailnet" ? "Tailnet" : "Private"}</strong><span>HTTPS route protected</span></div>
                 <div className="control-cell"><small>Connectors</small><strong>{systemStatus?.connectors ?? 0}</strong><span>Calendar, mail and memory next</span></div>
               </div>
-              <section className="control-section"><div className="control-section-head"><strong>System checks</strong><button onClick={() => void refreshSystem()} disabled={systemBusy}>{systemBusy ? "Checking…" : "Run check"}</button></div><div className="check-line"><span className={systemStatus ? "status-dot good" : "status-dot"} /> API service <small>{systemStatus ? "Responding" : "Not verified"}</small></div><div className="check-line"><span className={systemStatus?.modelConfigured ? "status-dot good" : "status-dot"} /> Intelligence bridge <small>{systemStatus?.modelConfigured ? "Credential present" : "Not configured"}</small></div><div className="check-line"><span className="status-dot" /> Personal data <small>No services connected yet</small></div></section>
-              <section className="control-section roadmap"><span>Next recommended connection</span><strong>Google Calendar · read only</strong><p>Let Stambh understand your day before it is allowed to change anything.</p><button onClick={() => { setControlOpen(false); setCommandOpen(true); }}>Plan connection <ArrowRight size={16} /></button></section>
+              <section className="control-section"><div className="control-section-head"><strong>System checks</strong><button onClick={() => { void refreshSystem(); void refreshCalendar(); }} disabled={systemBusy}>{systemBusy ? "Checking…" : "Run check"}</button></div><div className="check-line"><span className={systemStatus ? "status-dot good" : "status-dot"} /> API service <small>{systemStatus ? "Responding" : "Not verified"}</small></div><div className="check-line"><span className={systemStatus?.modelConfigured ? "status-dot good" : "status-dot"} /> Intelligence bridge <small>{systemStatus?.modelConfigured ? "Credential present" : "Not configured"}</small></div><div className="check-line"><span className={calendarStatus?.connected ? "status-dot good" : "status-dot"} /> Google Calendar <small>{calendarStatus?.connected ? "Connected · read only" : calendarStatus?.configured ? "Ready to authorize" : "Not configured"}</small></div></section>
+              <section className="control-section roadmap"><span>{calendarStatus?.connected ? "Connected service" : "Next recommended connection"}</span><strong>Google Calendar · read only</strong><p>{calendarStatus?.connected ? "Today’s agenda is now drawn from your calendar. Stambh cannot create, edit, or delete events." : "Let Stambh understand your day before it is allowed to change anything."}</p>{!calendarStatus?.connected && <button onClick={() => window.location.assign("/api/calendar/connect")}>Connect securely <ArrowRight size={16} /></button>}</section>
             </div>
           </motion.aside>
         )}

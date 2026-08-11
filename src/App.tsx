@@ -23,6 +23,16 @@ import {
 import { StambhCore } from "./components/StambhCore";
 
 type Message = { role: "user" | "assistant"; content: string };
+type SystemStatus = {
+  status: "ok";
+  startedAt: string;
+  uptimeSeconds: number;
+  provider: string;
+  runtime: string;
+  modelConfigured: boolean;
+  access: string;
+  connectors: number;
+};
 
 const agenda = [
   { time: "10:30", title: "Product review", meta: "Verdexo · 45 min" },
@@ -53,6 +63,9 @@ export function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [controlOpen, setControlOpen] = useState(false);
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [systemBusy, setSystemBusy] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -74,6 +87,23 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  async function refreshSystem() {
+    setSystemBusy(true);
+    try {
+      const response = await fetch("/api/system", { cache: "no-store" });
+      if (!response.ok) throw new Error("System check failed");
+      setSystemStatus((await response.json()) as SystemStatus);
+    } catch {
+      setSystemStatus(null);
+    } finally {
+      setSystemBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (controlOpen) void refreshSystem();
+  }, [controlOpen]);
 
   const date = useMemo(
     () => new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "2-digit", month: "long" }).format(new Date()),
@@ -128,7 +158,7 @@ export function App() {
           <button className="command-button" onClick={() => setCommandOpen(true)}>
             <Command size={16} /> Command <kbd>⌘ K</kbd>
           </button>
-          <button className="profile-button" aria-label="Profile">TB</button>
+          <button className="profile-button" onClick={() => setControlOpen(true)} aria-label="Open control room">TB</button>
         </div>
       </header>
 
@@ -228,6 +258,25 @@ export function App() {
       </footer>
 
       <AnimatePresence>
+        {controlOpen && (
+          <motion.aside className="control-drawer" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 28, stiffness: 260 }}>
+            <div className="control-head">
+              <div><span className="online-dot" /><strong>Control room</strong><small>Private system status</small></div>
+              <button className="icon-button" onClick={() => setControlOpen(false)} aria-label="Close control room"><X size={20} /></button>
+            </div>
+            <div className="control-body">
+              <div className="control-hero"><span>STAMBH / {systemStatus?.runtime ?? "checking"}</span><strong>{systemStatus ? "Operational" : "Checking system"}</strong><p>{systemStatus ? "The server is responding. This panel never displays credentials." : "Connecting to the local service plane…"}</p></div>
+              <div className="control-grid">
+                <div className="control-cell"><small>Application</small><strong>{systemStatus?.status === "ok" ? "Online" : "Unknown"}</strong><span>{systemStatus ? `Uptime ${Math.floor(systemStatus.uptimeSeconds / 60)} min` : "Awaiting response"}</span></div>
+                <div className="control-cell"><small>Model bridge</small><strong>{systemStatus?.modelConfigured ? "Configured" : "Preview"}</strong><span>{systemStatus?.provider ?? "No provider detected"}</span></div>
+                <div className="control-cell"><small>Access</small><strong>{systemStatus?.access === "tailnet" ? "Tailnet" : "Private"}</strong><span>HTTPS route protected</span></div>
+                <div className="control-cell"><small>Connectors</small><strong>{systemStatus?.connectors ?? 0}</strong><span>Calendar, mail and memory next</span></div>
+              </div>
+              <section className="control-section"><div className="control-section-head"><strong>System checks</strong><button onClick={() => void refreshSystem()} disabled={systemBusy}>{systemBusy ? "Checking…" : "Run check"}</button></div><div className="check-line"><span className={systemStatus ? "status-dot good" : "status-dot"} /> API service <small>{systemStatus ? "Responding" : "Not verified"}</small></div><div className="check-line"><span className={systemStatus?.modelConfigured ? "status-dot good" : "status-dot"} /> Intelligence bridge <small>{systemStatus?.modelConfigured ? "Credential present" : "Not configured"}</small></div><div className="check-line"><span className="status-dot" /> Personal data <small>No services connected yet</small></div></section>
+              <section className="control-section roadmap"><span>Next recommended connection</span><strong>Google Calendar · read only</strong><p>Let Stambh understand your day before it is allowed to change anything.</p><button onClick={() => { setControlOpen(false); setCommandOpen(true); }}>Plan connection <ArrowRight size={16} /></button></section>
+            </div>
+          </motion.aside>
+        )}
         {chatOpen && (
           <motion.aside className="chat-drawer" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 28, stiffness: 260 }}>
             <div className="chat-head">

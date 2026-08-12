@@ -14,10 +14,32 @@ const distDirectory = join(projectRoot, "dist");
 const startedAt = new Date().toISOString();
 const googleCredentialsFile = process.env.GOOGLE_OAUTH_CREDENTIALS_FILE ?? join(projectRoot, "secrets", "google-oauth.json");
 const googleTokenFile = process.env.GOOGLE_CALENDAR_TOKEN_FILE ?? join(projectRoot, "data", "google-calendar-token.json");
+const personalDataFile = process.env.STAMBH_DATA_FILE ?? join(projectRoot, "data", "stambh-personal.json");
 const oauthStates = new Map<string, number>();
 
 type GoogleCredentials = { web: { client_id: string; client_secret: string; redirect_uris?: string[] } };
 type GoogleToken = { access_token: string; refresh_token?: string; expires_in?: number; expires_at?: number; token_type?: string; scope?: string };
+type Task = { id: string; title: string; detail?: string; completed: boolean; createdAt: string; completedAt?: string };
+type Memory = { id: string; text: string; createdAt: string };
+type AuditItem = { id: string; kind: "task" | "memory" | "calendar"; action: string; createdAt: string };
+type PersonalData = { tasks: Task[]; memories: Memory[]; audit: AuditItem[] };
+
+function personalData(): PersonalData {
+  try {
+    const parsed = JSON.parse(readFileSync(personalDataFile, "utf8")) as Partial<PersonalData>;
+    return { tasks: parsed.tasks ?? [], memories: parsed.memories ?? [], audit: parsed.audit ?? [] };
+  } catch { return { tasks: [], memories: [], audit: [] }; }
+}
+
+function savePersonalData(data: PersonalData) {
+  mkdirSync(join(personalDataFile, ".."), { recursive: true });
+  writeFileSync(personalDataFile, JSON.stringify(data, null, 2), { mode: 0o600 });
+}
+
+function audit(data: PersonalData, kind: AuditItem["kind"], action: string) {
+  data.audit.unshift({ id: randomBytes(9).toString("hex"), kind, action, createdAt: new Date().toISOString() });
+  data.audit = data.audit.slice(0, 80);
+}
 
 function readGoogleCredentials(): GoogleCredentials | null {
   try {
@@ -78,7 +100,49 @@ app.get("/api/system", (_request, response) => {
     runtime: existsSync(distDirectory) ? "production" : "development",
     modelConfigured: Boolean(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID),
     access: process.env.STAMBH_ACCESS ?? "private",
-    connectors: existsSync(googleTokenFile) ? 1 : 0
+    connectors: existsSync(googleTokenFile) ? 1 : 0,
+    memoryReady: existsSync(personalDataFile)
+  });
+});
+
+const taskSchema = z.object({ title: z.string().trim().min(1).max(160), detail: z.string().trim().max(280).optional() });
+const memorySchema = z.object({ text: z.string().trim().min(1).max(800) });
+
+app.get("/api/tasks", (_request, response) => response.json({ tasks: personalData().tasks }));
+app.post("/api/tasks", (request, response) => {
+  const parsed = taskSchema.safeParse(request.body);
+  if (!parsed.success) return response.status(400).json({ error: "Task needs a title" });
+  const data = personalData();
+  const task: Task = { id: randomBytes(9).toString("hex"), ...parsed.data, completed: false, createdAt: new Date().toISOString() };
+  data.tasks.unshift(task); audit(data, "task", `Added task: ${task.title}`); savePersonalData(data);
+  response.status(201).json({ task });
+});
+app.patch("/api/tasks/:id", (request, response) => {
+  const data = personalData(); const task = data.tasks.find((item) => item.id === request.params.id);
+  if (!task) return response.status(404).json({ error: "Task not found" });
+  if (typeof request.body?.completed === "boolean") {
+    task.completed = request.body.completed; task.completedAt = task.completed ? new Date().toISOString() : undefined;
+    audit(data, "task", `${task.completed ? "Completed" : "Reopened"} task: ${task.title}`); savePersonalData(data);
+  }
+  response.json({ task });
+});
+app.get("/api/memory", (_request, response) => response.json({ memories: personalData().memories.slice(0, 24) }));
+app.post("/api/memory", (request, response) => {
+  const parsed = memorySchema.safeParse(request.body);
+  if (!parsed.success) return response.status(400).json({ error: "Memory needs text" });
+  const data = personalData(); const memory: Memory = { id: randomBytes(9).toString("hex"), text: parsed.data.text, createdAt: new Date().toISOString() };
+  data.memories.unshift(memory); data.memories = data.memories.slice(0, 200); audit(data, "memory", "Saved personal memory"); savePersonalData(data);
+  response.status(201).json({ memory });
+});
+app.get("/api/activity", (_request, response) => response.json({ activity: personalData().audit.slice(0, 12) }));
+app.get("/api/briefing", (_request, response) => {
+  const data = personalData();
+  const openTasks = data.tasks.filter((task) => !task.completed);
+  const firstTask = openTasks[0];
+  response.json({
+    headline: openTasks.length ? `${openTasks.length} open ${openTasks.length === 1 ? "priority" : "priorities"}.` : "No open priorities.",
+    summary: firstTask ? `Your next committed action is “${firstTask.title}.” Your calendar remains read-only.` : "Your task board is clear. Your calendar remains read-only.",
+    generatedAt: new Date().toISOString()
   });
 });
 
@@ -112,17 +176,28 @@ app.get("/api/calendar/callback", async (request, response) => {
   } catch { response.status(502).send("Calendar authorization is temporarily unavailable."); }
 });
 
-app.get("/api/calendar/events", async (_request, response) => {
+app.get("/api/calendar/events", async (request, response) => {
   const accessToken = await validAccessToken();
   if (!accessToken) return response.status(401).json({ error: "Calendar is not connected" });
+  const requestedDays = Number(request.query.days ?? 7);
+  const days = Number.isFinite(requestedDays) ? Math.min(Math.max(Math.floor(requestedDays), 1), 14) : 7;
   const start = new Date(); start.setHours(0, 0, 0, 0);
-  const end = new Date(start); end.setDate(end.getDate() + 1);
+  const end = new Date(start); end.setDate(end.getDate() + days);
   const query = new URLSearchParams({ timeMin: start.toISOString(), timeMax: end.toISOString(), singleEvents: "true", orderBy: "startTime", maxResults: "12" });
   try {
-    const result = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${query}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!result.ok) return response.status(502).json({ error: "Calendar could not be read" });
-    const payload = await result.json() as { items?: Array<{ id: string; summary?: string; location?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }> };
-    response.json({ events: (payload.items ?? []).map((event) => ({ id: event.id, title: event.summary ?? "Busy", start: event.start?.dateTime ?? event.start?.date, end: event.end?.dateTime ?? event.end?.date, allDay: Boolean(event.start?.date), location: event.location })) });
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    const calendarsResponse = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader", { headers });
+    if (!calendarsResponse.ok) return response.status(502).json({ error: "Calendar list could not be read" });
+    const calendars = await calendarsResponse.json() as { items?: Array<{ id: string; summary?: string; selected?: boolean; primary?: boolean }> };
+    const selectedCalendars = (calendars.items ?? []).filter((calendar) => calendar.primary || calendar.selected).slice(0, 12);
+    const eventLists = await Promise.all(selectedCalendars.map(async (calendar) => {
+      const result = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar.id)}/events?${query}`, { headers });
+      if (!result.ok) return [];
+      const payload = await result.json() as { items?: Array<{ id: string; summary?: string; location?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }> };
+      return (payload.items ?? []).map((event) => ({ id: `${calendar.id}:${event.id}`, title: event.summary ?? "Busy", start: event.start?.dateTime ?? event.start?.date, end: event.end?.dateTime ?? event.end?.date, allDay: Boolean(event.start?.date), location: event.location, calendar: calendar.summary ?? "Google Calendar" }));
+    }));
+    const events = eventLists.flat().sort((left, right) => (left.start ?? "").localeCompare(right.start ?? "")).slice(0, 24);
+    response.json({ events, days, calendars: selectedCalendars.map((calendar) => calendar.summary ?? "Google Calendar") });
   } catch { response.status(502).json({ error: "Calendar is temporarily unavailable" }); }
 });
 

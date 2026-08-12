@@ -2,22 +2,22 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowRight,
+  Brain,
   BookOpenText,
   BellSimple,
   CalendarBlank,
   Check,
   Command,
-  CurrencyInr,
   EnvelopeSimple,
-  Heartbeat,
   ListChecks,
   LockSimple,
   Microphone,
   PaperPlaneTilt,
+  Plus,
   Pulse,
+  SpeakerHigh,
   Sparkle,
   TrendUp,
-  UsersThree,
   X
 } from "@phosphor-icons/react";
 import { StambhCore } from "./components/StambhCore";
@@ -34,25 +34,19 @@ type SystemStatus = {
   connectors: number;
 };
 type CalendarStatus = { configured: boolean; connected: boolean; access: "read-only" };
-type CalendarEvent = { id: string; title: string; start?: string; end?: string; allDay: boolean; location?: string };
-
-const priorities = [
-  { title: "Ship Stambh beta", detail: "Interface, secure model bridge, docs", done: false },
-  { title: "Reply to 4 important threads", detail: "2 need decisions", done: false },
-  { title: "Review monthly runway", detail: "Due tomorrow", done: true }
-];
-
-const signals = [
-  { label: "Energy", value: "82", delta: "+6", icon: Heartbeat },
-  { label: "Focus", value: "3.4h", delta: "peak 2pm", icon: Pulse },
-  { label: "Runway", value: "8.2m", delta: "stable", icon: CurrencyInr },
-  { label: "People", value: "5", delta: "to follow up", icon: UsersThree }
-];
+type CalendarEvent = { id: string; title: string; start?: string; end?: string; allDay: boolean; location?: string; calendar?: string };
+type Task = { id: string; title: string; detail?: string; completed: boolean; createdAt: string };
+type Memory = { id: string; text: string; createdAt: string };
+type Activity = { id: string; kind: string; action: string; createdAt: string };
+type Briefing = { headline: string; summary: string; generatedAt: string };
+type RecognitionResult = { results: ArrayLike<{ 0: { transcript: string } }> };
+type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start: () => void; stop: () => void; onresult: ((event: RecognitionResult) => void) | null; onend: (() => void) | null; onerror: (() => void) | null };
+type RecognitionConstructor = new () => Recognition;
 
 const lifeSectors = [
-  { name: "Communication", metric: "4 important", note: "12 waiting · 2 drafted", icon: EnvelopeSimple, kind: "inbox" },
-  { name: "Knowledge", metric: "18 captured", note: "3 ideas resurfaced", icon: BookOpenText, kind: "knowledge" },
-  { name: "Projects", metric: "3 active", note: "Stambh beta leads today", icon: TrendUp, kind: "projects" }
+  { name: "Communication", metric: "Not connected", note: "Mail access remains off", icon: EnvelopeSimple, kind: "inbox" },
+  { name: "Knowledge", metric: "Private memory", note: "Stored only on bulk", icon: BookOpenText, kind: "knowledge" },
+  { name: "Projects", metric: "Local workspace", note: "Tasks and decisions in one place", icon: TrendUp, kind: "projects" }
 ];
 
 export function App() {
@@ -64,12 +58,20 @@ export function App() {
   const [systemBusy, setSystemBusy] = useState(false);
   const [calendarStatus, setCalendarStatus] = useState<CalendarStatus | null>(null);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [activity, setActivity] = useState<Activity[]>([]);
+  const [briefing, setBriefing] = useState<Briefing | null>(null);
+  const [taskDraft, setTaskDraft] = useState("");
+  const [memoryDraft, setMemoryDraft] = useState("");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "Good morning. I’ve mapped the day. Two decisions need you; the rest is under control." }
-  ]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try { return JSON.parse(localStorage.getItem("stambh-chat") ?? "") as Message[]; }
+    catch { return [{ role: "assistant", content: "Good morning. I’m online. Your private context remains on bulk." }]; }
+  });
   const inputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<Recognition | null>(null);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -92,13 +94,63 @@ export function App() {
       const status = await statusResponse.json() as CalendarStatus;
       setCalendarStatus(status);
       if (status.connected) {
-        const eventsResponse = await fetch("/api/calendar/events", { cache: "no-store" });
+        const eventsResponse = await fetch("/api/calendar/events?days=7", { cache: "no-store" });
         if (eventsResponse.ok) setCalendarEvents(((await eventsResponse.json()) as { events: CalendarEvent[] }).events);
       }
     } catch { setCalendarStatus(null); }
   }
 
   useEffect(() => { void refreshCalendar(); }, []);
+
+  async function refreshPersonal() {
+    try {
+      const [tasksResponse, memoryResponse, activityResponse, briefingResponse] = await Promise.all([
+        fetch("/api/tasks", { cache: "no-store" }), fetch("/api/memory", { cache: "no-store" }),
+        fetch("/api/activity", { cache: "no-store" }), fetch("/api/briefing", { cache: "no-store" })
+      ]);
+      if (tasksResponse.ok) setTasks(((await tasksResponse.json()) as { tasks: Task[] }).tasks);
+      if (memoryResponse.ok) setMemories(((await memoryResponse.json()) as { memories: Memory[] }).memories);
+      if (activityResponse.ok) setActivity(((await activityResponse.json()) as { activity: Activity[] }).activity);
+      if (briefingResponse.ok) setBriefing(await briefingResponse.json() as Briefing);
+    } catch { /* Local personal service can recover on the next refresh. */ }
+  }
+
+  useEffect(() => { void refreshPersonal(); }, []);
+  useEffect(() => { localStorage.setItem("stambh-chat", JSON.stringify(messages.slice(-40))); }, [messages]);
+
+  async function addTask(event: FormEvent) {
+    event.preventDefault(); const title = taskDraft.trim(); if (!title) return;
+    const response = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) });
+    if (response.ok) { setTaskDraft(""); await refreshPersonal(); }
+  }
+
+  async function toggleTask(task: Task) {
+    const response = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: !task.completed }) });
+    if (response.ok) await refreshPersonal();
+  }
+
+  async function saveMemory(event: FormEvent) {
+    event.preventDefault(); const text = memoryDraft.trim(); if (!text) return;
+    const response = await fetch("/api/memory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    if (response.ok) { setMemoryDraft(""); await refreshPersonal(); }
+  }
+
+  function toggleVoice() {
+    if (listening) { recognitionRef.current?.stop(); setListening(false); return; }
+    const voiceWindow = window as unknown as { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
+    const Constructor = voiceWindow.SpeechRecognition ?? voiceWindow.webkitSpeechRecognition;
+    if (!Constructor) { setMessages((current) => [...current, { role: "assistant", content: "Voice input is not available in this browser. Chrome usually supports it." }]); return; }
+    const recognition = new Constructor(); recognition.lang = "en-IN"; recognition.interimResults = false; recognition.continuous = false;
+    recognition.onresult = (event) => { setInput(event.results[0]?.[0]?.transcript ?? ""); setChatOpen(true); };
+    recognition.onend = () => setListening(false); recognition.onerror = () => setListening(false);
+    recognitionRef.current = recognition; setListening(true); recognition.start();
+  }
+
+  function speakLatest() {
+    const text = [...messages].reverse().find((message) => message.role === "assistant")?.content;
+    if (!text || !("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  }
 
   async function refreshSystem() {
     setSystemBusy(true);
@@ -116,11 +168,19 @@ export function App() {
   useEffect(() => {
     if (controlOpen) void refreshSystem();
   }, [controlOpen]);
+  useEffect(() => { void refreshSystem(); }, []);
 
   const date = useMemo(
     () => new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "2-digit", month: "long" }).format(new Date()),
     []
   );
+  const liveSignals = [
+    { label: "Server", value: systemStatus?.status === "ok" ? "UP" : "—", delta: systemStatus ? `${Math.floor(systemStatus.uptimeSeconds / 60)}m` : "check", icon: Pulse },
+    { label: "Calendar", value: calendarStatus?.connected ? "ON" : "—", delta: "read only", icon: CalendarBlank },
+    { label: "Tasks", value: String(tasks.filter((task) => !task.completed).length), delta: "open", icon: ListChecks },
+    { label: "Memory", value: String(memories.length), delta: "local", icon: Brain }
+  ];
+  const connectedSystems = 1 + (calendarStatus?.connected ? 1 : 0);
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
@@ -181,52 +241,54 @@ export function App() {
             <p className="panel-label">Morning intelligence</p>
             <h1>Everything important.<br /><em>Nothing noisy.</em></h1>
           </div>
-          <p className="brief-copy">Your day is balanced. Protect the 13:00 focus block; four messages can wait until evening.</p>
+          <p className="brief-copy">{briefing ? `${briefing.headline} ${briefing.summary}` : "Building your private briefing from Calendar and local priorities…"}</p>
           <button className="text-action" onClick={openChat}>Open briefing <ArrowRight size={17} /></button>
         </article>
 
         <article className="panel agenda-panel">
           <div className="panel-head">
-            <span><CalendarBlank size={18} /> Today</span>
+            <span><CalendarBlank size={18} /> Next 7 days</span>
             <button onClick={() => calendarStatus?.connected ? void refreshCalendar() : window.location.assign("/api/calendar/connect")}>{calendarStatus?.connected ? "Refresh" : "Connect"}</button>
           </div>
           <div className="agenda-list">
-            {calendarStatus?.connected && calendarEvents.length === 0 && <div className="agenda-item"><time>—</time><div><strong>No events today</strong><span>Your calendar is clear.</span></div></div>}
+            {calendarStatus?.connected && calendarEvents.length === 0 && <div className="agenda-item"><time>—</time><div><strong>No upcoming events</strong><span>Your next seven days are clear.</span></div></div>}
             {!calendarStatus?.connected && <div className="agenda-item"><time>—</time><div><strong>Calendar not connected</strong><span>Read-only access; Stambh cannot edit events.</span></div></div>}
             {calendarEvents.map((item, index) => (
               <div className={`agenda-item ${index === 1 ? "accent" : ""}`} key={item.id}>
-                <time>{item.allDay ? "ALL DAY" : item.start ? new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(item.start)) : "—"}</time>
-                <div><strong>{item.title}</strong><span>{item.location ?? "Google Calendar"}</span></div>
+                <time>{item.start ? new Intl.DateTimeFormat("en-IN", item.allDay ? { weekday: "short", day: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(item.start)) : "—"}</time>
+                <div><strong>{item.title}</strong><span>{item.location ?? item.calendar ?? "Google Calendar"}</span></div>
               </div>
             ))}
           </div>
         </article>
 
         <section className="core-panel" aria-label="Stambh intelligence core">
-          <div className="core-status"><span /> 7 systems connected</div>
-          <StambhCore active={listening} onActivate={() => setListening((value) => !value)} />
+          <div className="core-status"><span /> {connectedSystems} {connectedSystems === 1 ? "system" : "systems"} connected</div>
+          <StambhCore active={listening} onActivate={toggleVoice} />
           <button className="ask-button" onClick={openChat}><Sparkle size={18} weight="fill" /> Ask Stambh</button>
         </section>
 
         <article className="panel priorities-panel">
           <div className="panel-head">
             <span><ListChecks size={18} /> Priorities</span>
-            <small>2 remaining</small>
+            <small>{tasks.filter((task) => !task.completed).length} remaining</small>
           </div>
           <div className="priority-list">
-            {priorities.map((item) => (
-              <button className="priority-item" key={item.title}>
-                <span className={`check ${item.done ? "checked" : ""}`}>{item.done && <Check size={12} weight="bold" />}</span>
-                <span><strong>{item.title}</strong><small>{item.detail}</small></span>
+            {tasks.length === 0 && <div className="priority-empty">Your board is clear. Add the next concrete thing.</div>}
+            {tasks.slice(0, 4).map((item) => (
+              <button className="priority-item" key={item.id} onClick={() => void toggleTask(item)}>
+                <span className={`check ${item.completed ? "checked" : ""}`}>{item.completed && <Check size={12} weight="bold" />}</span>
+                <span><strong>{item.title}</strong><small>{item.detail ?? (item.completed ? "Completed" : "Stored privately on bulk")}</small></span>
               </button>
             ))}
           </div>
+          <form className="quick-add" onSubmit={addTask}><Plus size={15} /><input value={taskDraft} onChange={(event) => setTaskDraft(event.target.value)} placeholder="Add a priority" aria-label="Add a priority" /></form>
         </article>
 
         <article className="panel signal-panel">
           <div className="panel-head"><span>Life signals</span><small>Live overview</small></div>
           <div className="signal-grid">
-            {signals.map(({ label, value, delta, icon: Icon }) => (
+            {liveSignals.map(({ label, value, delta, icon: Icon }) => (
               <div className="signal" key={label}>
                 <Icon size={17} />
                 <span>{label}</span>
@@ -240,8 +302,8 @@ export function App() {
         <article className="panel attention-panel">
           <div className="panel-index">02</div>
           <p className="panel-label">Needs your attention</p>
-          <div className="attention-count">2</div>
-          <p>One decision from your product review and one personal follow-up.</p>
+          <div className="attention-count">{tasks.filter((task) => !task.completed).length}</div>
+          <p>{tasks.find((task) => !task.completed)?.title ?? "Nothing requires action right now."}</p>
           <button className="text-action" onClick={openChat}>Resolve with Stambh <ArrowRight size={17} /></button>
         </article>
       </section>
@@ -256,9 +318,8 @@ export function App() {
             <button className={`sector-widget ${kind}`} key={name} onClick={() => { setChatOpen(true); setInput(`Give me a briefing for ${name.toLowerCase()}`); }}>
               <div className="sector-top"><span><Icon size={17} />{name}</span><small>Open</small></div>
               <div className="sector-summary"><strong>{metric}</strong><p>{note}</p></div>
-              {kind === "inbox" && <div className="inbox-visual"><i /><i /><i /><span>+9</span></div>}
-              {kind === "knowledge" && <div className="knowledge-visual"><small>RESURFACED</small><p>“Build memory around decisions, not documents.”</p></div>}
-              {kind === "projects" && <div className="project-visual"><span><i style={{ width: "76%" }} />Stambh</span><span><i style={{ width: "48%" }} />Verdexo</span><span><i style={{ width: "22%" }} />Personal OS</span></div>}
+              {kind === "knowledge" && <div className="knowledge-visual"><small>PRIVATE MEMORY</small><p>{memories[0]?.text ?? "Save the decisions and preferences Stambh should remember."}</p></div>}
+              {kind === "projects" && <div className="knowledge-visual"><small>LOCAL TASK BOARD</small><p>{tasks.filter((task) => !task.completed).length ? `${tasks.filter((task) => !task.completed).length} open priorities are being tracked.` : "No projects inferred until you add real priorities."}</p></div>}
               <ArrowRight className="sector-arrow" size={18} />
             </button>
           ))}
@@ -268,7 +329,7 @@ export function App() {
       <footer className="footer-strip">
         <span><LockSimple size={15} /> Private by design</span>
         <span>MODEL · PREVIEW ROUTER</span>
-        <span>STAMBH 0.1 BETA</span>
+        <span>STAMBH 0.2 PRIVATE BETA</span>
       </footer>
 
       <AnimatePresence>
@@ -284,10 +345,12 @@ export function App() {
                 <div className="control-cell"><small>Application</small><strong>{systemStatus?.status === "ok" ? "Online" : "Unknown"}</strong><span>{systemStatus ? `Uptime ${Math.floor(systemStatus.uptimeSeconds / 60)} min` : "Awaiting response"}</span></div>
                 <div className="control-cell"><small>Model bridge</small><strong>{systemStatus?.modelConfigured ? "Configured" : "Preview"}</strong><span>{systemStatus?.provider ?? "No provider detected"}</span></div>
                 <div className="control-cell"><small>Access</small><strong>{systemStatus?.access === "tailnet" ? "Tailnet" : "Private"}</strong><span>HTTPS route protected</span></div>
-                <div className="control-cell"><small>Connectors</small><strong>{systemStatus?.connectors ?? 0}</strong><span>Calendar, mail and memory next</span></div>
+                <div className="control-cell"><small>Private context</small><strong>{tasks.length + memories.length}</strong><span>{tasks.length} tasks · {memories.length} memories</span></div>
               </div>
               <section className="control-section"><div className="control-section-head"><strong>System checks</strong><button onClick={() => { void refreshSystem(); void refreshCalendar(); }} disabled={systemBusy}>{systemBusy ? "Checking…" : "Run check"}</button></div><div className="check-line"><span className={systemStatus ? "status-dot good" : "status-dot"} /> API service <small>{systemStatus ? "Responding" : "Not verified"}</small></div><div className="check-line"><span className={systemStatus?.modelConfigured ? "status-dot good" : "status-dot"} /> Intelligence bridge <small>{systemStatus?.modelConfigured ? "Credential present" : "Not configured"}</small></div><div className="check-line"><span className={calendarStatus?.connected ? "status-dot good" : "status-dot"} /> Google Calendar <small>{calendarStatus?.connected ? "Connected · read only" : calendarStatus?.configured ? "Ready to authorize" : "Not configured"}</small></div></section>
-              <section className="control-section roadmap"><span>{calendarStatus?.connected ? "Connected service" : "Next recommended connection"}</span><strong>Google Calendar · read only</strong><p>{calendarStatus?.connected ? "Today’s agenda is now drawn from your calendar. Stambh cannot create, edit, or delete events." : "Let Stambh understand your day before it is allowed to change anything."}</p>{!calendarStatus?.connected && <button onClick={() => window.location.assign("/api/calendar/connect")}>Connect securely <ArrowRight size={16} /></button>}</section>
+              <section className="control-section memory-control"><span>Private memory · local only</span><form onSubmit={saveMemory}><Brain size={16} /><input value={memoryDraft} onChange={(event) => setMemoryDraft(event.target.value)} placeholder="Remember a preference or decision…" aria-label="Save a private memory" /><button type="submit">Save</button></form><p>Saved on bulk. It is not automatically sent to Cloudflare.</p></section>
+              <section className="control-section"><div className="control-section-head"><strong>Recent activity</strong><small>Audit trail</small></div>{activity.length === 0 && <p className="empty-copy">No local actions recorded yet.</p>}{activity.slice(0, 5).map((item) => <div className="activity-line" key={item.id}><span>{item.kind}</span><strong>{item.action}</strong><time>{new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit" }).format(new Date(item.createdAt))}</time></div>)}</section>
+              <section className="control-section roadmap"><span>Approval gate armed</span><strong>External actions require you</strong><p>Calendar is read-only. Future email, calendar, and file changes will pause for an explicit approval before execution.</p>{!calendarStatus?.connected && <button onClick={() => window.location.assign("/api/calendar/connect")}>Connect Calendar <ArrowRight size={16} /></button>}</section>
             </div>
           </motion.aside>
         )}
@@ -302,9 +365,9 @@ export function App() {
               {busy && <div className="message assistant typing"><i /><i /><i /></div>}
             </div>
             <form className="composer" onSubmit={sendMessage}>
-              <button type="button" className={`mic-button ${listening ? "active" : ""}`} onClick={() => setListening((value) => !value)} aria-label="Voice input"><Microphone size={19} /></button>
+              <button type="button" className={`mic-button ${listening ? "active" : ""}`} onClick={toggleVoice} aria-label="Voice input"><Microphone size={19} /></button>
               <input ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder="Ask anything, or give Stambh a task…" />
-              <button type="submit" className="send-button" aria-label="Send"><PaperPlaneTilt size={18} weight="fill" /></button>
+              <div className="composer-actions"><button type="button" className="speak-button" onClick={speakLatest} aria-label="Read latest response"><SpeakerHigh size={17} /></button><button type="submit" className="send-button" aria-label="Send"><PaperPlaneTilt size={18} weight="fill" /></button></div>
             </form>
           </motion.aside>
         )}
